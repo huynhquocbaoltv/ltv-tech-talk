@@ -5,7 +5,7 @@ import { CodeLensProvider } from "./codeLensProvider";
 import { WebViewProvider } from "./webViewProvider";
 
 // This method is called when your extension is activated .
-// Your extension is activated the very first time the command is executed
+// Your extension is activated the very first time the command is executedsdsd
 export function activate(context: vscode.ExtensionContext) {
   const webViewProvider = new WebViewProvider();
   const codeLensDisposable = vscode.languages.registerCodeLensProvider(
