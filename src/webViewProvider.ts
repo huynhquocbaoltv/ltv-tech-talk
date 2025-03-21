@@ -21,6 +21,7 @@ export class WebViewProvider implements vscode.WebviewViewProvider {
         location: vscode.ProgressLocation.Notification,
         title: "Analyzing code...",
       },
+
       async () => {
         try {
           const promt = `Bạn là một Senior Developer giàu kinh nghiệm. Hãy phân tích đoạn code sau và cung cấp đánh giá chi tiết:  
