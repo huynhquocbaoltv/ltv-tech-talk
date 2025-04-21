@@ -1,0 +1,80 @@
+name: PR Approval Check
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  validate-approvals:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check if PR author is a code owner
+        id: check-code-owner
+        env:
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          CODEOWNERS=$(grep -v '^#' .github/CODEOWNERS | awk '{for (i=2; i<=NF; i++) print $i}' | grep '@' | sed 's/@//' | tr '\n' ' ')
+          if [[ " $CODEOWNERS " =~ " $PR_AUTHOR " ]]; then
+            echo "is_code_owner=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_code_owner=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Get approved reviewers
+        id: get-approvers
+        uses: actions/github-script@v6
+        with:
+          script: |
+            try {
+              const { data: reviews } = await github.rest.pulls.listReviews({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.issue.number,
+              });
+
+              const approvers = [...new Set(
+                reviews
+                  .filter(review => review.state === "APPROVED")
+                  .map(review => review.user.login)
+              )];
+
+              core.setOutput("result", JSON.stringify(approvers));
+            } catch (error) {
+              core.setFailed(`Lỗi khi lấy danh sách reviews: ${error}`);
+            }
+
+      - name: Check approval conditions
+        id: check-conditions
+        env:
+          IS_CODE_OWNER: ${{ steps.check-code-owner.outputs.is_code_owner }}
+          APPROVERS: ${{ steps.get-approvers.outputs.result }}
+        run: |
+          APPROVERS_ARR=$(echo "$APPROVERS" | jq -r '.[]')
+          CODEOWNERS=$(grep -v '^#' .github/CODEOWNERS | awk '{for (i=2; i<=NF; i++) print $i}' | grep '@' | sed 's/@//' | tr '\n' ' ')
+
+          APPROVER_COUNT=0
+          HAS_CODE_OWNER_APPROVAL=false
+          for approver in $APPROVERS_ARR; do
+            APPROVER_COUNT=$((APPROVER_COUNT + 1))
+            if [[ " $CODEOWNERS " =~ " $approver " ]]; then
+              HAS_CODE_OWNER_APPROVAL=true
+            fi
+          done
+
+          if [[ "$IS_CODE_OWNER" == "true" ]]; then
+            if [ $APPROVER_COUNT -ge 2 ]; then
+              exit 0
+            else
+              echo "❌ Code owner PR cần ít nhất 2 approvals."
+              exit 1
+            fi
+          else
+            if [ $APPROVER_COUNT -ge 2 ] && [[ "$HAS_CODE_OWNER_APPROVAL" == "true" ]]; then
+              exit 0
+            else
+              echo "❌ Non-code owner PR cần ít nhất 2 approvals, trong đó có 1 code owner."
+              exit 1
+            fi
+          fi
