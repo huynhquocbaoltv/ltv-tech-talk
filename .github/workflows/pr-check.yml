@@ -1,81 +1,40 @@
-name: PR Approval Check
-
+name: PR Validation
 on:
   pull_request_review:
     types: [submitted]
   pull_request:
-    types: [opened, reopened, ready_for_review, synchronize]
+    types: [opened, synchronize, reopened]
 
 jobs:
   check-approvals:
     runs-on: ubuntu-latest
     steps:
-      - name: Check PR Author and Approvals
+      - name: Check if PR author is a code owner
+        id: check_codeowner
         uses: actions/github-script@v6
-        env:
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         with:
           script: |
-            const { data: pr } = await github.rest.pulls.get({
+            const pr = context.payload.pull_request;
+            const codeOwners = process.env.CODEOWNERS.split(',');
+            const isAuthorCodeOwner = codeOwners.includes(pr.user.login);
+            return isAuthorCodeOwner;
+
+      - name: Validate Approvals
+        if: ${{ steps.check_codeowner.outputs.result == 'false' }}
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const reviews = await github.rest.pulls.listReviews({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              pull_number: context.issue.number,
+              pull_number: pr.number,
             });
 
-            // Kiểm tra PR author có phải là code owner không
-            const isAuthorCodeOwner = await isUserInCodeOwnersTeam(env.PR_AUTHOR);
+            const codeOwners = process.env.CODEOWNERS.split(',');
+            const approvals = reviews.data.filter(r => r.state === 'APPROVED');
+            const hasCodeOwnerApproval = approvals.some(a => codeOwners.includes(a.user.login));
 
-            // Lấy danh sách approvals
-            const { data: reviews } = await github.rest.pulls.listReviews({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: context.issue.number,
-            });
-            const uniqueApprovals = [...new Set(reviews
-              .filter(r => r.state === 'APPROVED')
-              .map(a => a.user.login)
-            )];
-
-            // Kiểm tra approvals từ code owners
-            let hasCodeOwnerApproval = false;
-            for (const user of uniqueApprovals) {
-              if (await isUserInCodeOwnersTeam(user)) {
-                hasCodeOwnerApproval = true;
-                break;
-              }
-            }
-
-            // Điều kiện merge
-            let conditionsMet = false;
-            if (!isAuthorCodeOwner) {
-              conditionsMet = uniqueApprovals.length >= 2 && hasCodeOwnerApproval;
-            } else {
-              conditionsMet = uniqueApprovals.length >= 2;
-            }
-
-            // Cập nhật trạng thái check
-            await github.rest.repos.createCommitStatus({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              sha: pr.head.sha,
-              state: conditionsMet ? 'success' : 'failure',
-              context: 'PR Approval Check',
-              description: conditionsMet 
-                ? 'Đủ điều kiện merge' 
-                : 'Thiếu approvals (xem rules)',
-            });
-
-            // Hàm kiểm tra user có trong team code owners không
-            async function isUserInCodeOwnersTeam(username) {
-              try {
-                await github.rest.teams.getMembershipForUserInOrg({
-                  org: 'your-org',  // Thay bằng tên org
-                  team_slug: 'team-codeowners',  // Thay bằng team code owners
-                  username: username,
-                });
-                return true;
-              } catch (error) {
-                if (error.status === 404) return false;
-                throw error;
-              }
+            if (approvals.length < 2 || !hasCodeOwnerApproval) {
+              core.setFailed('PR cần ít nhất 2 approvals, trong đó 1 từ code owner.');
             }
