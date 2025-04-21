@@ -27,19 +27,23 @@ jobs:
         uses: actions/github-script@v6
         with:
           script: |
-            const { data: reviews } = await github.rest.pulls.listReviews({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: context.issue.number,
-            });
+            try {
+              const { data: reviews } = await github.rest.pulls.listReviews({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.issue.number,
+              });
 
-            const approvers = [...new Set(
-              reviews
-                .filter(review => review.state === 'APPROVED')
-                .map(review => review.user.login)
-            )];
+              const approvers = [...new Set(
+                reviews
+                  .filter(review => review.state === "APPROVED")
+                  .map(review => review.user.login)
+              )];
 
-            core.setOutput('result', JSON.stringify(approvers));  # ✅ Đúng cú pháp
+              core.setOutput("result", JSON.stringify(approvers));
+            } catch (error) {
+              core.setFailed(`Lỗi khi lấy danh sách reviews: ${error}`);
+            }
 
       - name: Check approval conditions
         id: check-conditions
