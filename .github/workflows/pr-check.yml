@@ -27,27 +27,27 @@ jobs:
         uses: actions/github-script@v6
         with:
           script: |
-            const reviews = await github.rest.pulls.listReviews({
+            const { data: reviews } = await github.rest.pulls.listReviews({
               owner: context.repo.owner,
               repo: context.repo.repo,
               pull_number: context.issue.number,
             });
+
             const approvers = [...new Set(
-              reviews.data
+              reviews
                 .filter(review => review.state === 'APPROVED')
                 .map(review => review.user.login)
             )];
-            return JSON.stringify(approvers);  # Trả về JSON array
+
+            core.setOutput('result', JSON.stringify(approvers));  # ✅ Đúng cú pháp
 
       - name: Check approval conditions
         id: check-conditions
         env:
           IS_CODE_OWNER: ${{ steps.check-code-owner.outputs.is_code_owner }}
-          APPROVERS: ${{ steps.get-approvers.outputs.result }} # Đã là JSON string
+          APPROVERS: ${{ steps.get-approvers.outputs.result }}
         run: |
-          # Parse JSON array từ biến APPROVERS
-          APPROVERS_ARR=$(echo "$APPROVERS" | jq -r '.[]')  # Sử dụng double quotes
-
+          APPROVERS_ARR=$(echo "$APPROVERS" | jq -r '.[]')
           CODEOWNERS=$(grep -v '^#' .github/CODEOWNERS | awk '{for (i=2; i<=NF; i++) print $i}' | grep '@' | sed 's/@//' | tr '\n' ' ')
 
           APPROVER_COUNT=0
