@@ -15,9 +15,7 @@ jobs:
         env:
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
-          # Lấy danh sách code owners từ file CODEOWNERS
           CODEOWNERS=$(grep -v '^#' .github/CODEOWNERS | awk '{for (i=2; i<=NF; i++) print $i}' | grep '@' | sed 's/@//' | tr '\n' ' ')
-
           if [[ " $CODEOWNERS " =~ " $PR_AUTHOR " ]]; then
             echo "is_code_owner=true" >> $GITHUB_OUTPUT
           else
@@ -39,15 +37,17 @@ jobs:
                 .filter(review => review.state === 'APPROVED')
                 .map(review => review.user.login)
             )];
-            return approvers;
+            return JSON.stringify(approvers);  # Trả về JSON array
 
       - name: Check approval conditions
         id: check-conditions
         env:
           IS_CODE_OWNER: ${{ steps.check-code-owner.outputs.is_code_owner }}
-          APPROVERS: ${{ toJSON(steps.get-approvers.outputs.result) }}
+          APPROVERS: ${{ steps.get-approvers.outputs.result }} # Đã là JSON string
         run: |
-          APPROVERS_ARR=$(echo '$APPROVERS' | jq -r '.[]')
+          # Parse JSON array từ biến APPROVERS
+          APPROVERS_ARR=$(echo "$APPROVERS" | jq -r '.[]')  # Sử dụng double quotes
+
           CODEOWNERS=$(grep -v '^#' .github/CODEOWNERS | awk '{for (i=2; i<=NF; i++) print $i}' | grep '@' | sed 's/@//' | tr '\n' ' ')
 
           APPROVER_COUNT=0
